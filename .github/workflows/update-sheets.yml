@@ -1,0 +1,35 @@
+name: Update stock sheets
+
+# 毎日 16:00 JST に日経平均225・トヨタの株価をスプレッドシートへ書き出す。
+# GitHub Actions の cron は UTC のため 16:00 JST = 07:00 UTC。
+on:
+  schedule:
+    - cron: "0 7 * * 1-5"   # 月〜金 07:00 UTC = 16:00 JST
+  workflow_dispatch:          # 手動実行も可
+
+concurrency:
+  group: update-sheets
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Update spreadsheet
+        env:
+          # リポジトリの Settings > Secrets に登録したサービスアカウント鍵 (JSON 全体)。
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          # 任意で上書き。未設定ならコード内の既定 ID を使用。
+          SPREADSHEET_ID: ${{ vars.SPREADSHEET_ID }}
+        run: python -m sheets_stock.update_job
