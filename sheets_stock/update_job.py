@@ -75,12 +75,12 @@ def _self_test() -> int:
         assert len(row) == 23, "データ行の列数が不正です"
         for cell in row[2:]:  # C 列以降はすべて '=' 始まりの数式
             assert isinstance(cell, str) and cell.startswith("="), f"数式でないセル: {cell!r}"
-    # 代表行の数式を目視確認用に出力。
+    # 代表行の数式を目視確認用に出力 (降順: row2 が最新)。
     print("HEADER:", m[0])
-    print("row2 (先頭データ):", m[1])
-    print("row3 (直近差あり):", m[2])
-    print("row300 (RSI300可):", m[300])
-    print("[self-test] OK: 数式生成は正常です。")
+    print("row2 (最新・先頭データ):", m[1])
+    print("row3 (前日参照 r+1):", m[2])
+    print("row300 (RSI300 window):", m[300])
+    print("[self-test] OK: 数式生成は正常です (ABBV 準拠・降順)。")
     return 0
 
 

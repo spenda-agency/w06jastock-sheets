@@ -16,10 +16,8 @@ from dataclasses import dataclass
 #   https://docs.google.com/spreadsheets/d/1Zivd5Dorzc_fnwYF0gt5QSliq1MwLs6ZntNmt3AyeD4/edit
 DEFAULT_SPREADSHEET_ID = "1Zivd5Dorzc_fnwYF0gt5QSliq1MwLs6ZntNmt3AyeD4"
 
-# ボリンジャーバンドの期間 (標準的な 20 期間・±2σ)。
-BOLLINGER_PERIOD = 20
-
 # ヘッダ行は 1 行目、データは 2 行目 (=FIRST_DATA_ROW) から。
+# データは ABBV に合わせて降順 (新しい日付が上) で書き込む。
 FIRST_DATA_ROW = 2
 
 
