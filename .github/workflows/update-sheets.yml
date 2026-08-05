@@ -1,6 +1,7 @@
 name: Update stock sheets
 
-# 毎日 16:00 JST に日経平均225・トヨタの株価をスプレッドシートへ書き出す。
+# 毎日 16:00 JST に tickers.csv の全銘柄をスプレッドシートへ書き出す。
+# 銘柄の追加は tickers.csv を編集するだけ (このワークフローの変更は不要)。
 # GitHub Actions の cron は UTC のため 16:00 JST = 07:00 UTC。
 on:
   schedule:

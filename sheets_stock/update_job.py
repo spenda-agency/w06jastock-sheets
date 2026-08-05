@@ -22,38 +22,59 @@ from .prices import fetch_close_series
 
 def _run(dry_run: bool) -> int:
     days = config.history_days()
-    matrices: dict[str, list[list]] = {}
+    instruments = config.load_instruments()
+    print(f"[start] 対象 {len(instruments)} 銘柄 (tickers.csv)", file=sys.stderr)
 
-    for inst in config.INSTRUMENTS:
+    built: list[tuple[config.Instrument, list[list]]] = []
+    failures: list[str] = []
+
+    # 1 銘柄の失敗が他銘柄を止めないよう、取得・整形は銘柄ごとに try/except。
+    for inst in instruments:
         print(f"[fetch] {inst.label} ({inst.ticker}) …", file=sys.stderr)
-        series = fetch_close_series(inst.ticker, days=days)
+        try:
+            series = fetch_close_series(inst.ticker, days=days)
+        except Exception as e:  # noqa: BLE001 - 1 銘柄の失敗で全体を止めない
+            print(f"[error] {inst.label}: 取得中に例外: {e}", file=sys.stderr)
+            failures.append(inst.label)
+            continue
         if not series:
             print(f"[warn] {inst.label}: データ取得に失敗しました。スキップします。", file=sys.stderr)
+            failures.append(inst.label)
             continue
         print(
             f"[fetch] {inst.label}: {len(series)} 本 "
             f"({series[0][0]} 〜 {series[-1][0]}, 終値 {series[-1][1]})",
             file=sys.stderr,
         )
-        matrices[inst.sheet_name] = build_matrix(series)
+        built.append((inst, build_matrix(series)))
 
-    if not matrices:
+    if not built:
         print("[error] 書き込めるデータがありません。", file=sys.stderr)
         return 1
 
     if dry_run:
-        for name, m in matrices.items():
-            print(f"[dry-run] '{name}': {len(m)} 行 x {len(m[0])} 列 (書き込みなし)")
+        for inst, m in built:
+            print(f"[dry-run] '{inst.sheet_name}': {len(m)} 行 x {len(m[0])} 列 (書き込みなし)")
+        if failures:
+            print(f"[dry-run] 取得失敗: {len(failures)} 銘柄 -> {', '.join(failures)}", file=sys.stderr)
+            return 1
         return 0
 
     # 遅延 import: 取得だけしたい場合は gspread 不要。
     from .sheet_writer import open_spreadsheet, write_matrix
 
     ss = open_spreadsheet(config.spreadsheet_id())
-    for name, m in matrices.items():
-        rng = write_matrix(ss, name, m)
-        print(f"[write] '{name}': {rng} に {len(m)} 行を書き込みました。", file=sys.stderr)
+    for inst, m in built:
+        try:
+            rng = write_matrix(ss, inst.sheet_name, m)
+            print(f"[write] '{inst.sheet_name}': {rng} に {len(m)} 行を書き込みました。", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001 - 1 タブの失敗で他タブを止めない
+            print(f"[error] '{inst.sheet_name}': 書き込み失敗: {e}", file=sys.stderr)
+            failures.append(inst.label)
 
+    if failures:
+        print(f"[done] 一部失敗: {len(failures)} 銘柄 -> {', '.join(failures)}", file=sys.stderr)
+        return 1
     print("[done] 全銘柄の更新が完了しました。", file=sys.stderr)
     return 0
 

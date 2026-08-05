@@ -15,7 +15,25 @@
   - `N225` … 日経平均225（yfinance ティッカー `^N225`。指数のため 4 桁コードは無く `N225`）
   - `7203` … トヨタ自動車（yfinance ティッカー `7203.T`）
 
-銘柄の追加は [`sheets_stock/config.py`](sheets_stock/config.py) の `INSTRUMENTS` に 1 行足すだけです。
+## 銘柄の追加方法（GitHub 上で完結）
+
+対象銘柄は [`tickers.csv`](tickers.csv) で管理します。**GitHub の Web UI でこのファイルに
+1 行足してコミットするだけ**で銘柄を追加できます（コード変更・ワークフロー変更は不要）。
+
+```csv
+ticker,sheet_name,label
+^N225,N225,日経平均225
+7203.T,7203,トヨタ自動車
+6758.T,,ソニーグループ     ← ticker だけでも可。sheet_name は 6758 に自動導出
+```
+
+- `ticker`（必須）… yfinance のティッカー（東証個別株は `7203.T`、指数は `^N225`）
+- `sheet_name`（任意）… タブ名。空欄なら ticker から自動導出（先頭 `^`・末尾 `.T` を除去）
+- `label`（任意）… ログ表示名。空欄なら ticker をそのまま使用
+- `#` で始まる行・空行は無視されます
+
+追加後、**次回の 16:00 実行**（または Actions の `Run workflow` 手動実行）で新しいタブが
+自動生成されます。1 銘柄が取得失敗（上場廃止・記号ミス等）しても他銘柄は止まりません。
 
 ## 列レイアウト（既存タブ「ABBV」に準拠）
 
@@ -72,7 +90,15 @@ ABBV の設計に合わせ、データは **新しい日付が上（降順）** 
 - Secret `GOOGLE_SERVICE_ACCOUNT_JSON` … ダウンロードした鍵 JSON の**中身全体**
 - （任意）Variable `SPREADSHEET_ID` … 出力先を変えたい場合のみ
 
-[`.github/workflows/update-sheets.yml`](.github/workflows/update-sheets.yml) が **月〜金 07:00 UTC（= 16:00 JST）** に実行します。`workflow_dispatch` で手動実行も可能です。
+登録後、**Actions タブ → `Update stock sheets` → `Run workflow`** で一度手動実行して
+疎通確認してください。ログに `N225 → A1:W801 ...` のような行が出れば成功です。
+
+[`.github/workflows/update-sheets.yml`](.github/workflows/update-sheets.yml) が
+**月〜金 07:00 UTC（= 16:00 JST）** に自動実行します。`workflow_dispatch` で手動実行も可能。
+
+> スケジュール実行は**デフォルトブランチ**から起動します（本リポジトリのデフォルトは
+> `claude/nikkei-toyota-sheet-automation-foklzh`）。別ブランチを本番にする場合は
+> そのブランチをデフォルトに設定してください。
 
 ### 3. ローカル / Colab で実行
 
@@ -100,8 +126,9 @@ python -m sheets_stock.update_job --self-test
 
 ```
 w06jastock-sheets/
+├── tickers.csv          # 対象銘柄一覧（GitHub 上で編集して銘柄追加）
 ├── sheets_stock/
-│   ├── config.py        # 対象銘柄・スプレッドシート ID・定数
+│   ├── config.py        # tickers.csv 読み込み・スプレッドシート ID・定数
 │   ├── prices.py        # yfinance で (Date, Close) を取得
 │   ├── formulas.py      # C 列以降の数式を生成（本リポジトリの核）
 │   ├── sheet_writer.py  # gspread 認証 + 一括書き込み
