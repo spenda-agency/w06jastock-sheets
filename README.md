@@ -11,9 +11,9 @@
 ## 出力先
 
 - スプレッドシート: <https://docs.google.com/spreadsheets/d/1Zivd5Dorzc_fnwYF0gt5QSliq1MwLs6ZntNmt3AyeD4/edit>
-- 1 銘柄 = 1 ワークシート（タブ）
-  - `日経平均225` … yfinance ティッカー `^N225`
-  - `トヨタ` … yfinance ティッカー `7203.T`
+- 1 銘柄 = 1 ワークシート（タブ）。タブ名は既存タブ「ABBV」に倣い銘柄コード。
+  - `N225` … 日経平均225（yfinance ティッカー `^N225`。指数のため 4 桁コードは無く `N225`）
+  - `7203` … トヨタ自動車（yfinance ティッカー `7203.T`）
 
 銘柄の追加は [`sheets_stock/config.py`](sheets_stock/config.py) の `INSTRUMENTS` に 1 行足すだけです。
 

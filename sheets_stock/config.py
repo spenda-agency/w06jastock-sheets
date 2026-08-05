@@ -34,9 +34,11 @@ class Instrument:
 
 
 # 今回対象とする銘柄。まずは日経平均225 とトヨタの 2 銘柄を 1 シートずつ。
+# タブ名 (sheet_name) は既存タブ「ABBV」に倣い銘柄コードに合わせる。
+# 日経平均インデックスには 4 桁コードが無いため、ティッカー ^N225 に倣い "N225"。
 INSTRUMENTS: list[Instrument] = [
-    Instrument(ticker="^N225", sheet_name="日経平均225", label="日経平均株価 (Nikkei 225)"),
-    Instrument(ticker="7203.T", sheet_name="トヨタ", label="トヨタ自動車 (7203)"),
+    Instrument(ticker="^N225", sheet_name="N225", label="日経平均株価 (Nikkei 225)"),
+    Instrument(ticker="7203.T", sheet_name="7203", label="トヨタ自動車 (7203)"),
 ]
 
 
