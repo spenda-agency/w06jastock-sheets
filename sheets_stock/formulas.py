@@ -1,47 +1,47 @@
 """スプレッドシートの数式列 (C 列以降) を組み立てる。
 
-要件:「Date・Close の次の C 列より右はスプレッドシートの数式で出せる」。
-本モジュールは各データ行に入れる数式文字列を生成し、Python 側は Date/Close
-だけを値として書き込む。
+数式は既存タブ **「ABBV」** に記載済みの定義に厳密に合わせる。ABBV の設計上の要点:
 
-列レイアウト (ヘッダは 1 行目、データは 2 行目から):
+- データは **新しい日付が上 (降順)**。したがって「前日」は 1 つ **下** の行
+  (r+1) を参照する。本ジョブも A/B (Date/Close) を降順で書き込む。
+- ヘッダは 1 行目、データは 2 行目 (=FIRST_DATA_ROW) から。
 
-| 列 | ヘッダ                 | 内容                                             |
-|----|------------------------|--------------------------------------------------|
-| A  | Date                   | 日付 (値)                                        |
-| B  | Close                  | 終値 (値)                                        |
-| C  | IF($C3>=0,$C3,0)       | 上昇幅 gain = 直近差(E)が+なら直近差, 他は0      |
-| D  | IF($C3>=0,0,-$C3)      | 下落幅 loss = 直近差(E)が+なら0, 他は-直近差     |
-| E  | 直近差                 | 前日終値との差 = B(r) - B(r-1)                    |
-| F  | RSI14                  | 100-100/(1+平均gain14/平均loss14)                |
-| G  | RSI30                  | 同上 30 期間                                     |
-| H  | RSI45                  | 同上 45 期間                                     |
-| I  | RSI100                 | 同上 100 期間                                    |
-| J  | RSI300                 | 同上 300 期間                                    |
-| K  | RSI判断                | RSI14>=70:売 / <=30:買 / それ以外:△              |
-| L  | ボリジャー上限         | 20SMA + 2σ                                       |
-| M  | ボリジャー下限         | 20SMA - 2σ                                       |
-| N  | EMA12                  | 指数平滑 (adjust=False 相当, 前行参照)           |
-| O  | EMA26                  | 同上 26                                          |
-| P  | MACD                   | EMA12 - EMA26                                     |
-| Q  | シグナル線9日          | MACD の EMA9 (前行参照)                          |
-| R  | MACDクロス             | ゴールデン/デッド (差 S の符号反転を検出)        |
-| S  | MACDクロス差           | MACD - シグナル線                                |
-| T  | MA3                    | 終値 3 期間単純移動平均                          |
-| U  | MA5                    | 5 期間                                           |
-| V  | MA10                   | 10 期間                                          |
-| W  | MA200                  | 200 期間                                         |
+列レイアウト (A..W)。C 列以降は各行に入れる数式:
 
-備考: ユーザ提示のヘッダでは C/D 列の数式が ``$C3`` を参照しているが、
-上昇幅/下落幅は「直近差」を基に算出するのが指標の定義であり、直近差は
-本レイアウトでは E 列にあたる。列の並び順はユーザ提示どおりに保ちつつ、
-参照先だけを直近差 (E 列) に合わせて整合させている。
+| 列 | ヘッダ                 | ABBV の数式 (r 行目, r+1=前日=1つ下) |
+|----|------------------------|--------------------------------------|
+| A  | Date                   | 値 (yfinance)                        |
+| B  | Close                  | 値 (yfinance)                        |
+| C  | IF($C3>=0,$C3,0)       | 上昇幅 = IF($Br-$B(r+1)>=0, 差, 0)   |
+| D  | IF($C3>=0,0,-$C3)      | 下落幅 = IF($Br-$B(r+1)>=0, 0, -差)  |
+| E  | 直近差                 | 方向 = IF(Br-B(r+1)>0,"↑",…,"↓","")  |
+| F  | RSI14                  | (Σgain14/14)/((Σgain14/14)+(Σloss14/14))*100 |
+| G  | RSI30                  | 同上 30                              |
+| H  | RSI45                  | 同上 45                              |
+| I  | RSI100                 | 同上 100                             |
+| J  | RSI300                 | 同上 300                             |
+| K  | RSI判断                | COUNTIF ネストで ×/△/〇/◎            |
+| L  | ボリジャー上限         | AVERAGE(5)+2*STDEV(5)                |
+| M  | ボリジャー下限         | AVERAGE(5)-2*STDEV(5)                |
+| N  | EMA12                  | N(r+1)+2/13*(Br-N(r+1))              |
+| O  | EMA26                  | O(r+1)+2/27*(Br-O(r+1))              |
+| P  | MACD                   | Nr-Or                                |
+| Q  | シグナル線9日          | Q(r+1)+2/(9+1)*(Pr-Q(r+1))           |
+| R  | MACDクロス             | Pr-Qr                                |
+| S  | MACDクロス差           | 方向 = IF(Rr-R(r+1)>0,"↑",…)         |
+| T  | MA3                    | SUM($Br:$B(r+2))/3                   |
+| U  | MA5                    | SUM($Br:$B(r+4))/5                   |
+| V  | MA10                   | SUM($Br:$B(r+9))/10                  |
+| W  | MA200                  | SUM(Br:B(r+199))/200                 |
+
+注: ABBV では末尾 (最古の行) 付近で参照範囲がデータ下端を超えて空セルに及ぶが
+(空セル=0 として計算)、これは ABBV の挙動そのものであり忠実に再現する。
 """
 from __future__ import annotations
 
-from .config import BOLLINGER_PERIOD, FIRST_DATA_ROW
+from .config import FIRST_DATA_ROW
 
-# ユーザ提示のヘッダ行をそのまま採用 (A..W)。
+# ABBV のヘッダ行 (A..W)。C/D の見出しは ABBV 上の表記をそのまま踏襲。
 HEADER: list[str] = [
     "Date",
     "Close",
@@ -68,107 +68,68 @@ HEADER: list[str] = [
     "MA200",
 ]
 
-# EMA 平滑係数 (adjust=False: 前行 EMA と当日 Close の加重平均)。
-_EMA12_K = 2 / (12 + 1)
-_EMA26_K = 2 / (26 + 1)
-_SIGNAL_K = 2 / (9 + 1)
 
-
-def _rsi(gain_col: str, loss_col: str, period: int, r: int) -> str:
-    """r 行目の RSI 数式。直近 ``period`` 本の gain/loss 平均から算出。
-
-    十分な本数がそろう行 (最初の直近差は 3 行目) からのみ計算し、
-    それ以前は空欄。損失平均が 0 の場合は RSI=100。
-    """
-    # 直近差は FIRST_DATA_ROW+1 行目 (=3) から。period 本そろう最初の行:
-    first_valid = FIRST_DATA_ROW + 1 + (period - 1)
-    # 先頭付近の行では top が 1 未満になり得る。IF ガードで値は使われないが、
-    # 数式文字列自体は正しい A1 参照でなければ #REF! になるため 1 行目 (ヘッダ=
-    # 文字列で AVERAGE 対象外) にクランプする。
-    top = max(r - period + 1, 1)
-    avg_gain = f"AVERAGE(${gain_col}{top}:${gain_col}{r})"
-    avg_loss = f"AVERAGE(${loss_col}{top}:${loss_col}{r})"
-    return (
-        f'=IF(ROW()<{first_valid},"",'
-        f"IF({avg_loss}=0,100,"
-        f"100-100/(1+{avg_gain}/{avg_loss})))"
-    )
-
-
-def _sma(col: str, period: int, r: int) -> str:
-    first_valid = FIRST_DATA_ROW + (period - 1)
-    top = max(r - period + 1, 1)  # ヘッダ行へクランプ (A1 参照を有効に保つ)
-    return f'=IF(ROW()<{first_valid},"",AVERAGE(${col}{top}:${col}{r}))'
-
-
-def _ema(col: str, price_col: str, k: float, r: int) -> str:
-    """adjust=False の EMA。初回行は Close をシードにし、以降は前行参照。"""
-    if r == FIRST_DATA_ROW:
-        return f"=${price_col}{r}"
-    return (
-        f"=${price_col}{r}*{k:.10f}+${col}{r - 1}*{1 - k:.10f}"
-    )
+def _rsi(period: int, r: int) -> str:
+    """ABBV 方式の RSI (gain/loss の単純平均比)。r..r+period-1 の下方向 window。"""
+    lo = r + period - 1
+    sg = f"SUM($C{r}:$C{lo})/{period}"
+    sl = f"SUM($D{r}:$D{lo})/{period}"
+    return f"=({sg}/({sg}+{sl}))*100"
 
 
 def build_row_formulas(r: int) -> list[str]:
-    """データ行 ``r`` (>= FIRST_DATA_ROW) の C..W 列数式を返す (21 要素)。"""
-    prev = r - 1
-    diff_first = FIRST_DATA_ROW + 1  # 直近差が計算できる最初の行 (=3)
+    """データ行 ``r`` (>= FIRST_DATA_ROW) の C..W 列数式を返す (21 要素)。
 
-    # C 上昇幅 / D 下落幅 (直近差 E を参照)
-    gain = f'=IF($E{r}="","",IF($E{r}>=0,$E{r},0))'
-    loss = f'=IF($E{r}="","",IF($E{r}>=0,0,-$E{r}))'
-    # E 直近差
-    diff = f'=IF(ROW()<{diff_first},"",$B{r}-$B{prev})'
+    r+1 は 1 つ下の行 (= 前日・より古い日) を指す。
+    """
+    n = r + 1  # 前日 (1 つ下の行)
 
-    # F..J RSI (gain=C, loss=D)
-    rsi14 = _rsi("C", "D", 14, r)
-    rsi30 = _rsi("C", "D", 30, r)
-    rsi45 = _rsi("C", "D", 45, r)
-    rsi100 = _rsi("C", "D", 100, r)
-    rsi300 = _rsi("C", "D", 300, r)
+    # C 上昇幅 / D 下落幅 / E 方向
+    gain = f"=IF($B{r}-$B{n}>=0,$B{r}-$B{n},0)"
+    loss = f"=IF($B{r}-$B{n}>=0,0,-$B{r}+$B{n})"
+    direction = f'=IF(B{r}-B{n}>0,"↑",IF(B{r}-B{n}<0,"↓",""))'
 
-    # K RSI判断 (RSI14 = F 列)
+    # F..J RSI
+    rsi14 = _rsi(14, r)
+    rsi30 = _rsi(30, r)
+    rsi45 = _rsi(45, r)
+    rsi100 = _rsi(100, r)
+    rsi300 = _rsi(300, r)
+
+    # K RSI判断 (ABBV の COUNTIF ネストを忠実に再現)
     rsi_judge = (
-        f'=IF($F{r}="","",IF($F{r}>=70,"売",IF($F{r}<=30,"買","△")))'
+        f'=IF(COUNTIF(F{r},">=70")=1,"×",'
+        f'IF(COUNTIF(F{r}:H{r},">=50")=3,"△",'
+        f'IF(COUNTIF(F{r}:H{r},">=50")=2,"△",'
+        f'IF(COUNTIF(F{r}:H{r},">=50")=1,"〇",'
+        f'IF(COUNTIF(F{r}:H{r},">=50")=0,'
+        f'IF(COUNTIF(F{r},"<=30")=0,"〇","◎"))))))'
     )
 
-    # L/M ボリンジャーバンド (20SMA ± 2σ, 母集団標準偏差)
-    bb_first = FIRST_DATA_ROW + (BOLLINGER_PERIOD - 1)
-    bb_top = max(r - BOLLINGER_PERIOD + 1, 1)  # ヘッダ行へクランプ
-    bb_mid = f"AVERAGE($B{bb_top}:$B{r})"
-    bb_sd = f"STDEVP($B{bb_top}:$B{r})"
-    bb_upper = f'=IF(ROW()<{bb_first},"",{bb_mid}+2*{bb_sd})'
-    bb_lower = f'=IF(ROW()<{bb_first},"",{bb_mid}-2*{bb_sd})'
+    # L/M ボリンジャー (5 日, 標本標準偏差 STDEV)
+    bb_lo = r + 4
+    bb_upper = f"=AVERAGE($B{r}:$B{bb_lo})+2*STDEV($B{r}:$B{bb_lo})"
+    bb_lower = f"=AVERAGE($B{r}:$B{bb_lo})-2*STDEV($B{r}:$B{bb_lo})"
 
-    # N/O EMA, P MACD, Q シグナル, R クロス, S クロス差
-    ema12 = _ema("N", "B", _EMA12_K, r)
-    ema26 = _ema("O", "B", _EMA26_K, r)
-    macd = f"=$N{r}-$O{r}"
-    signal = (
-        f"=$P{r}" if r == FIRST_DATA_ROW
-        else f"=$P{r}*{_SIGNAL_K:.10f}+$Q{prev}*{1 - _SIGNAL_K:.10f}"
-    )
-    macd_diff = f"=$P{r}-$Q{r}"  # S 列
-    if r <= FIRST_DATA_ROW:
-        macd_cross = '=""'
-    else:
-        macd_cross = (
-            f'=IF(AND($S{prev}<=0,$S{r}>0),"ゴールデン",'
-            f'IF(AND($S{prev}>=0,$S{r}<0),"デッド",""))'
-        )
+    # N/O EMA, P MACD, Q シグナル, R クロス, S 方向
+    ema12 = f"=N{n}+2/13*(B{r}-N{n})"
+    ema26 = f"=O{n}+2/27*(B{r}-O{n})"
+    macd = f"=N{r}-O{r}"
+    signal = f"=Q{n}+2/(9+1)*(P{r}-Q{n})"
+    macd_cross = f"=P{r}-Q{r}"
+    macd_cross_dir = f'=IF(R{r}-R{n}>0,"↑",IF(R{r}-R{n}<0,"↓",""))'
 
-    # T..W 移動平均
-    ma3 = _sma("B", 3, r)
-    ma5 = _sma("B", 5, r)
-    ma10 = _sma("B", 10, r)
-    ma200 = _sma("B", 200, r)
+    # T..W 移動平均 (下方向 window)
+    ma3 = f"=SUM($B{r}:$B{r + 2})/3"
+    ma5 = f"=SUM($B{r}:$B{r + 4})/5"
+    ma10 = f"=SUM($B{r}:$B{r + 9})/10"
+    ma200 = f"=SUM(B{r}:B{r + 199})/200"
 
     return [
-        gain, loss, diff,
+        gain, loss, direction,
         rsi14, rsi30, rsi45, rsi100, rsi300, rsi_judge,
         bb_upper, bb_lower,
-        ema12, ema26, macd, signal, macd_cross, macd_diff,
+        ema12, ema26, macd, signal, macd_cross, macd_cross_dir,
         ma3, ma5, ma10, ma200,
     ]
 
@@ -176,10 +137,12 @@ def build_row_formulas(r: int) -> list[str]:
 def build_matrix(series: list[tuple[str, float]]) -> list[list]:
     """ヘッダ + 全データ行 (値 A/B + 数式 C..W) の 2 次元配列を返す。
 
-    ``series`` は (日付, 終値) の昇順リスト。
+    ``series`` は (日付, 終値) の **昇順** リスト。ABBV に合わせて **降順**
+    (新しい日付が上) に並べ替えて書き込む。
     """
+    rows_desc = sorted(series, key=lambda x: x[0], reverse=True)
     matrix: list[list] = [HEADER]
-    for i, (date_str, close) in enumerate(series):
+    for i, (date_str, close) in enumerate(rows_desc):
         r = FIRST_DATA_ROW + i
         matrix.append([date_str, close, *build_row_formulas(r)])
     return matrix
