@@ -7,6 +7,11 @@ ticker,sheet_name,label
 
 # 指数
 ^N225,N225,日経平均225
+^TOPX,TOPX,TOPIX
+^JPXN400,JPXN400,JPX日経400
+^TSEGR,TSEGR,東証グロース市場250
+^TSE300,TSE300,TOPIX Core30
+^JPX PRIME,JPXPRIME,JPX Prime 150
 
 # 日本 時価総額 上位20社 (概ねの順。時価総額は変動するため順位は目安)
 7203.T,7203,トヨタ自動車
