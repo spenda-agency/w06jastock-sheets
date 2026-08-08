@@ -6,12 +6,15 @@ ticker,sheet_name,label
 # "#" で始まる行・空行は無視されます。
 
 # 指数
+# 日経225 は Yahoo Finance に指数シンボル (^N225) があるが、TOPIX 等その他の
+# 日本の指数は yfinance では取得できない。そのため各指数に連動する ETF
+# (通常の .T 銘柄) を代理として使用する。値は指数そのものではなく ETF 価格。
 ^N225,N225,日経平均225
-^TOPX,TOPX,TOPIX
-^JPXN400,JPXN400,JPX日経400
-^TSEGR,TSEGR,東証グロース市場250
-^TSE300,TSE300,TOPIX Core30
-^JPX PRIME,JPXPRIME,JPX Prime 150
+1306.T,TOPX,TOPIX (連動ETF 1306)
+1591.T,JPXN400,JPX日経400 (連動ETF 1591)
+2516.T,TSEGR,東証グロース市場250 (連動ETF 2516)
+1311.T,TSE300,TOPIX Core30 (連動ETF 1311)
+2017.T,JPXPRIME,JPX Prime 150 (連動ETF 2017)
 
 # 日本 時価総額 上位20社 (概ねの順。時価総額は変動するため順位は目安)
 7203.T,7203,トヨタ自動車
