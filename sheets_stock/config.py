@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import csv
 import os
+import re
 from dataclasses import dataclass
 
 
@@ -62,6 +63,26 @@ def _derive_sheet_name(ticker: str) -> str:
     return name
 
 
+# 東証コードの形: 4桁数字 (7203) または新形式 3桁+英字 (285A)。
+_JP_CODE_RE = re.compile(r"^\d{4}$|^\d{3}[A-Za-z]$")
+
+
+def _normalize_ticker(ticker: str) -> str:
+    """裸の東証コードに ``.T`` を補完して yfinance 用シンボルにする。
+
+    - ``^`` 始まり (指数) はそのまま。
+    - ``.`` を含む (既に取引所サフィックス付き, 例 7203.T) はそのまま。
+    - 4桁数字 (6327) や新形式 (285A) の裸コードは末尾に ``.T`` を補完。
+    これにより ``6327`` と ``6327.T`` のどちらで登録しても取得できる。
+    """
+    t = ticker.strip()
+    if not t or t.startswith("^") or "." in t:
+        return t
+    if _JP_CODE_RE.match(t):
+        return f"{t}.T"
+    return t
+
+
 def load_instruments(path: str | None = None) -> list[Instrument]:
     """``tickers.csv`` を読み対象銘柄を返す。無い/空なら組み込み既定へフォールバック。
 
@@ -84,7 +105,7 @@ def load_instruments(path: str | None = None) -> list[Instrument]:
                 continue
             if first.lower() == "ticker":  # ヘッダ行
                 continue
-            ticker = first
+            ticker = _normalize_ticker(first)
             sheet_name = (row[1].strip() if len(row) > 1 else "") or _derive_sheet_name(ticker)
             label = (row[2].strip() if len(row) > 2 else "") or ticker
             instruments.append(Instrument(ticker=ticker, sheet_name=sheet_name, label=label))
