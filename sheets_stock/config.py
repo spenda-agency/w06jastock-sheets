@@ -100,14 +100,19 @@ def load_instruments(path: str | None = None) -> list[Instrument]:
         for row in reader:
             if not row:
                 continue
-            first = row[0].strip()
+            fields = [c.strip() for c in row]
+            first = fields[0]
             if not first or first.startswith("#"):
                 continue
             if first.lower() == "ticker":  # ヘッダ行
                 continue
-            ticker = _normalize_ticker(first)
-            sheet_name = (row[1].strip() if len(row) > 1 else "") or _derive_sheet_name(ticker)
-            label = (row[2].strip() if len(row) > 2 else "") or ticker
+            # "6981.T" を "6981,T" とカンマ誤入力した行を救済する。
+            # (この場合 2 列目が "T" 単独になり列が 1 つずつずれる)
+            if len(fields) > 1 and fields[1].upper() == "T" and "." not in first:
+                fields = [f"{first}.T", *fields[2:]]
+            ticker = _normalize_ticker(fields[0])
+            sheet_name = (fields[1] if len(fields) > 1 else "") or _derive_sheet_name(ticker)
+            label = (fields[2] if len(fields) > 2 else "") or ticker
             instruments.append(Instrument(ticker=ticker, sheet_name=sheet_name, label=label))
 
     return instruments or list(INSTRUMENTS)
