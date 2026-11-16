@@ -1,11 +1,12 @@
 name: Update stock sheets
 
-# 毎日 16:00 JST に tickers.csv の全銘柄をスプレッドシートへ書き出す。
+# 毎日 17:00 JST に tickers.csv の全銘柄をスプレッドシートへ書き出す。
 # 銘柄の追加は tickers.csv を編集するだけ (このワークフローの変更は不要)。
-# GitHub Actions の cron は UTC のため 16:00 JST = 07:00 UTC。
+# GitHub Actions の cron は UTC のため 17:00 JST = 08:00 UTC。
+# (J-Quants の株価四本値は 16:30 JST 頃更新のため、その後に取得できるよう 17:00 に設定)
 on:
   schedule:
-    - cron: "0 7 * * 1-5"   # 月〜金 07:00 UTC = 16:00 JST
+    - cron: "0 8 * * 1-5"   # 月〜金 08:00 UTC = 17:00 JST
   workflow_dispatch:          # 手動実行も可
 
 concurrency:

@@ -1,6 +1,6 @@
 # w06jastock-sheets
 
-日経平均225・トヨタなどの日次株価を **Google スプレッドシートへ毎日 16:00 (JST) に自動出力** するジョブ。
+日経平均225・トヨタなどの日次株価を **Google スプレッドシートへ毎日 17:00 (JST) に自動出力** するジョブ。
 
 姉妹リポジトリ [`spenda-agency/jastock`](https://github.com/spenda-agency/jastock)（東証全銘柄のゴールデンクロス検出 Web アプリ）のテクニカル指標を参考にしつつ、本リポジトリは方針が異なります:
 
@@ -32,7 +32,7 @@ ticker,sheet_name,label
 - `label`（任意）… ログ表示名。空欄なら ticker をそのまま使用
 - `#` で始まる行・空行は無視されます
 
-追加後、**次回の 16:00 実行**（または Actions の `Run workflow` 手動実行）で新しいタブが
+追加後、**次回の 17:00 実行**（または Actions の `Run workflow` 手動実行）で新しいタブが
 自動生成されます。1 銘柄が取得失敗（上場廃止・記号ミス等）しても他銘柄は止まりません。
 
 ## 列レイアウト（既存タブ「ABBV」に準拠）
@@ -94,7 +94,7 @@ ABBV の設計に合わせ、データは **新しい日付が上（降順）** 
 疎通確認してください。ログに `N225 → A1:W801 ...` のような行が出れば成功です。
 
 [`.github/workflows/update-sheets.yml`](.github/workflows/update-sheets.yml) が
-**月〜金 07:00 UTC（= 16:00 JST）** に自動実行します。`workflow_dispatch` で手動実行も可能。
+**月〜金 08:00 UTC（= 17:00 JST）** に自動実行します。`workflow_dispatch` で手動実行も可能。
 
 > スケジュール実行は**デフォルトブランチ**から起動します（本リポジトリのデフォルトは
 > `claude/nikkei-toyota-sheet-automation-foklzh`）。別ブランチを本番にする場合は
@@ -133,7 +133,7 @@ w06jastock-sheets/
 │   ├── formulas.py      # C 列以降の数式を生成（本リポジトリの核）
 │   ├── sheet_writer.py  # gspread 認証 + 一括書き込み
 │   └── update_job.py    # エントリポイント（--dry-run / --self-test）
-├── .github/workflows/update-sheets.yml   # 毎日 16:00 JST cron
+├── .github/workflows/update-sheets.yml   # 毎日 17:00 JST cron
 ├── requirements.txt
 └── .env.example
 ```
