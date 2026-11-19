@@ -1,20 +1,17 @@
-"""日次 Close 時系列の取得 (J-Quants API)。
+"""日次 Close 時系列の取得 (J-Quants API **V2**)。
 
-データ源を Yahoo Finance (yfinance) から **J-Quants API** に変更。
-本ジョブが必要とするのは **日付と終値のみ** なので、戻り値は従来どおり
-``[(date_str, close_float), ...]`` に正規化する (呼び出し側は無変更)。
+データ源を Yahoo Finance から J-Quants API V2 に変更。V2 はダッシュボード発行の
+**API キー** 方式 (``x-api-key`` ヘッダー、無期限)。本ジョブが必要とするのは
+日付と終値のみなので、戻り値は従来どおり ``[(date_str, close_float), ...]``。
 
-J-Quants の認証は リフレッシュトークン → IDトークン → ``Authorization: Bearer``。
-IDトークンは全銘柄で使い回すためモジュール内にキャッシュする。
+  - ベース URL : https://api.jquants.com/v2  (環境変数 JQUANTS_BASE_URL で上書き可)
+  - 四本値     : GET /v2/equities/bars/daily  (code か date 必須、from/to 可)
+  - 認証       : ヘッダ ``x-api-key: <API キー>`` (環境変数 JQUANTS_API_KEY)
+  - 銘柄コード : 5桁 (7203 → 72030)。ティッカー "7203.T" は ".T" を除去して変換。
+  - レスポンス : ``data`` 配列。終値は調整後 (AdjustmentClose) を優先。
 
-認証情報 (環境変数・いずれか):
-  - JQUANTS_ID_TOKEN      … IDトークンを直接指定 (24時間有効)
-  - JQUANTS_REFRESH_TOKEN … リフレッシュトークン (1週間有効・推奨)
-  - JQUANTS_MAILADDRESS + JQUANTS_PASSWORD … メール/パスワード (Google連携は不可)
-
-指数シンボル (^N225 等) は J-Quants には存在しないため空リストを返す
-(呼び出し側でスキップ)。TOPIX 等の連動 ETF (1306.T 等) は通常の上場銘柄
-なので取得できる。
+指数シンボル (^N225 等) は J-Quants に無いため空リストを返す (呼び出し側でスキップ)。
+TOPIX 等の連動 ETF (1306.T 等) は通常の上場銘柄なので取得できる。
 """
 from __future__ import annotations
 
@@ -26,27 +23,37 @@ from typing import Optional
 
 import requests
 
-_BASE = (os.environ.get("JQUANTS_BASE_URL") or "https://api.jquants.com/v1").rstrip("/")
+_BASE = (os.environ.get("JQUANTS_BASE_URL") or "https://api.jquants.com/v2").rstrip("/")
 _TIMEOUT = 30
 _RETRY_TRIES = 5
 _RETRY_BASE = 3
 _RETRY_ON = {429, 500, 502, 503, 504}
 
-# 全銘柄で使い回す IDトークン (と取得失敗) のキャッシュ。
-_ID_TOKEN: Optional[str] = None
-_AUTH_ERROR: Optional[Exception] = None
+_API_KEY: Optional[str] = None
 _logged_cols = False
-
-
-def _clean(v: Optional[str]) -> str:
-    t = (v or "").strip().strip('"').strip("'").strip()
-    if t.lower().startswith("bearer "):
-        t = t[7:].strip()
-    return "".join(t.split())
 
 
 class JQuantsError(RuntimeError):
     pass
+
+
+def _clean(v: Optional[str]) -> str:
+    t = (v or "").strip().strip('"').strip("'")
+    return "".join(t.split())
+
+
+def _api_key() -> str:
+    global _API_KEY
+    if _API_KEY is not None:
+        return _API_KEY
+    key = _clean(os.environ.get("JQUANTS_API_KEY"))
+    if not key:
+        raise JQuantsError(
+            "JQUANTS_API_KEY が未設定です。J-Quants V2 ダッシュボードで発行した "
+            "API キーを設定してください。"
+        )
+    _API_KEY = key
+    return key
 
 
 def _body_snippet(resp: requests.Response) -> str:
@@ -76,70 +83,25 @@ def _request(method: str, url: str, **kwargs) -> requests.Response:
     )
 
 
-def _acquire_id_token() -> str:
-    direct = _clean(os.environ.get("JQUANTS_ID_TOKEN"))
-    if direct:
-        print("[jquants] JQUANTS_ID_TOKEN を直接使用。", file=sys.stderr)
-        return direct
-
-    refresh = _clean(os.environ.get("JQUANTS_REFRESH_TOKEN"))
-    mail = (os.environ.get("JQUANTS_MAILADDRESS") or "").strip()
-    pw = os.environ.get("JQUANTS_PASSWORD") or ""
-    errors: list[str] = []
-
-    if mail and pw:
-        try:
-            r = _request("POST", f"{_BASE}/token/auth_user",
-                         json={"mailaddress": mail, "password": pw})
-            rt = _clean(r.json().get("refreshToken"))
-            if rt:
-                refresh = rt
-                print("[jquants] auth_user でリフレッシュトークン取得。", file=sys.stderr)
-        except Exception as e:  # noqa: BLE001
-            errors.append(f"auth_user: {e}")
-
-    if refresh:
-        try:
-            r = _request("POST", f"{_BASE}/token/auth_refresh",
-                         params={"refreshtoken": refresh})
-            idt = _clean(r.json().get("idToken"))
-            if idt:
-                print("[jquants] auth_refresh で IDトークン取得。", file=sys.stderr)
-                return idt
-            errors.append("auth_refresh: 応答に idToken なし")
-        except Exception as e:  # noqa: BLE001
-            errors.append(f"auth_refresh: {e}")
-
-    raise JQuantsError(
-        "IDトークンを取得できませんでした。Web マイページで新しいリフレッシュトークン"
-        "(1週間有効) を取得し JQUANTS_REFRESH_TOKEN に設定してください。詳細: "
-        + " | ".join(errors or ["認証情報が未設定"])
-    )
-
-
-def _id_token() -> str:
-    """IDトークンを取得 (初回のみ認証、以降キャッシュ)。失敗もキャッシュして即再送出。"""
-    global _ID_TOKEN, _AUTH_ERROR
-    if _ID_TOKEN is not None:
-        return _ID_TOKEN
-    if _AUTH_ERROR is not None:
-        raise _AUTH_ERROR
-    try:
-        _ID_TOKEN = _acquire_id_token()
-        return _ID_TOKEN
-    except Exception as e:  # noqa: BLE001
-        _AUTH_ERROR = e
-        raise
-
-
-def _to_code(ticker: str) -> Optional[str]:
-    """yfinance ティッカーを J-Quants コードに変換。指数 (^...) は None。"""
+def _to_code5(ticker: str) -> Optional[str]:
+    """yfinance ティッカーを J-Quants V2 の 5桁コードに変換。指数 (^...) は None。"""
     t = ticker.strip()
     if not t or t.startswith("^"):
-        return None  # 指数は J-Quants に無い
+        return None
     if t.lower().endswith(".t"):
         t = t[:-2]
-    return t
+    return t + "0" if len(t) == 4 else t
+
+
+def _extract_records(body: dict):
+    for k in ("data", "daily_quotes", "bars", "quotes"):
+        v = body.get(k)
+        if isinstance(v, list):
+            return v
+    for v in body.values():
+        if isinstance(v, list):
+            return v
+    return []
 
 
 def _pick(row: dict, *names):
@@ -153,56 +115,52 @@ def _pick(row: dict, *names):
 def fetch_close_series(ticker: str, days: int = 800) -> list[tuple[str, float]]:
     """``ticker`` の直近 ``days`` 営業日分の (日付, 終値) を返す。
 
-    - 日付は昇順、``YYYY-MM-DD``。欠損は除外。
+    - 日付は昇順、``YYYY-MM-DD``。欠損は除外。終値は調整後終値を優先。
     - 指数 (^N225 等) や取得不能時は空リスト (呼び出し側でスキップ)。
-    - 終値は調整後終値 (AdjustmentClose) を優先。
     """
-    code = _to_code(ticker)
-    if code is None:
+    code5 = _to_code5(ticker)
+    if code5 is None:
         print(f"[jquants] {ticker}: 指数は J-Quants 非対応のためスキップ。", file=sys.stderr)
         return []
 
-    token = _id_token()
-    headers = {"Authorization": f"Bearer {token}"}
-
+    headers = {"x-api-key": _api_key()}
     end = datetime.utcnow() + timedelta(days=1)
     start = end - timedelta(days=int(days * 1.6) + 40)
-    params_base = {
-        "from": start.strftime("%Y-%m-%d"),
-        "to": end.strftime("%Y-%m-%d"),
-    }
+    base = {"from": start.strftime("%Y-%m-%d"), "to": end.strftime("%Y-%m-%d")}
 
     def _fetch(code_param: str) -> list[dict]:
-        params = dict(params_base, code=code_param)
+        params = dict(base, code=code_param)
         rows: list[dict] = []
         while True:
-            resp = _request("GET", f"{_BASE}/prices/daily_quotes",
+            resp = _request("GET", f"{_BASE}/equities/bars/daily",
                             headers=headers, params=params)
             body = resp.json()
-            recs = body.get("daily_quotes")
-            if isinstance(recs, list):
-                rows.extend(recs)
+            rows.extend(_extract_records(body))
             pk = body.get("pagination_key")
             if not pk:
                 break
             params = dict(params, pagination_key=pk)
         return rows
 
-    rows = _fetch(code)
-    if not rows and code.isdigit() and len(code) == 4:
-        rows = _fetch(code + "0")  # 4桁→5桁フォールバック
+    rows = _fetch(code5)
+    if not rows and code5 != ticker.strip().rstrip(".Tt"):
+        # 5桁で空なら元の桁でも試す (保険)
+        raw = ticker.strip()
+        raw = raw[:-2] if raw.lower().endswith(".t") else raw
+        if raw and raw != code5:
+            rows = _fetch(raw)
     if not rows:
         return []
 
     global _logged_cols
     if not _logged_cols:
-        print(f"[jquants] 応答カラム: {sorted(rows[0].keys())}", file=sys.stderr)
+        print(f"[jquants] V2 応答カラム: {sorted(rows[0].keys())}", file=sys.stderr)
         _logged_cols = True
 
     series: list[tuple[str, float]] = []
     for r in rows:
-        d = _pick(r, "Date", "date")
-        c = _pick(r, "AdjustmentClose", "Close", "C")
+        d = _pick(r, "Date", "date", "Day")
+        c = _pick(r, "AdjustmentClose", "AdjClose", "AdjC", "Close", "C")
         if d is None or c is None:
             continue
         try:

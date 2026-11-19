@@ -90,9 +90,7 @@ ABBV の設計に合わせ、データは **新しい日付が上（降順）** 
 リポジトリの **Settings → Secrets and variables → Actions** で登録:
 
 - Secret `GOOGLE_SERVICE_ACCOUNT_JSON` … ダウンロードした鍵 JSON の**中身全体**
-- Secret `JQUANTS_REFRESH_TOKEN` … J-Quants リフレッシュトークン（マイページで取得・**1週間有効**）
-  - Google ログインのアカウントでもマイページの「リフレッシュトークンを取得する」ボタンで取得可
-  - 代わりに `JQUANTS_ID_TOKEN`（24時間有効）を直接設定してもよい
+- Secret `JQUANTS_API_KEY` … J-Quants **V2 の API キー**（ダッシュボードで発行・無期限）
 - （任意）Variable `SPREADSHEET_ID` … 出力先を変えたい場合のみ
 
 登録後、**Actions タブ → `Update stock sheets` → `Run workflow`** で一度手動実行して
@@ -112,7 +110,7 @@ pip install -r requirements.txt
 
 # 認証: Google 鍵ファイルのパス + J-Quants トークン
 export GOOGLE_APPLICATION_CREDENTIALS=./service_account.json
-export JQUANTS_REFRESH_TOKEN=xxxxx   # または JQUANTS_ID_TOKEN=xxxxx
+export JQUANTS_API_KEY=xxxxx          # J-Quants V2 の API キー
 
 # 実行（対象シートへ一括書き込み）
 python -m sheets_stock.update_job
@@ -148,10 +146,9 @@ w06jastock-sheets/
 
 **J-Quants API**（JPX 公式）から日次株価を取得します。終値は**調整後終値**（株式分割等を反映）を使用します。
 
-- 認証: `リフレッシュトークン（1週間有効）→ IDトークン（24時間）→ Authorization: Bearer`。
-  `prices.py` が全銘柄で IDトークンを 1 回取得して使い回します。
-- ティッカー `7203.T` は末尾 `.T` を除去して J-Quants コード `7203` に変換します
-  （4桁コードでヒットしなければ 5桁コード `72030` で再取得）。
+- 認証: V2 の **API キー**（`x-api-key` ヘッダー・無期限）。`prices.py` が
+  環境変数 `JQUANTS_API_KEY` を使います。
+- ティッカー `7203.T` は末尾 `.T` を除去し、V2 の **5桁コード `72030`** に変換して取得します。
 - **指数（`^N225` 等）は J-Quants に存在しないためスキップされます。** 日経225 を出したい場合は、
   連動 ETF（例 `1321.T` = NEXT FUNDS 日経225連動型）を `tickers.csv` に追加してください
   （値は指数そのものではなく ETF 価格になります）。TOPIX 等は既に連動 ETF（`1306.T` 等）で登録済みです。
