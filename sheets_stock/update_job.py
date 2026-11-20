@@ -38,8 +38,13 @@ def _run(dry_run: bool) -> int:
             failures.append(inst.label)
             continue
         if not series:
-            print(f"[warn] {inst.label}: データ取得に失敗しました。スキップします。", file=sys.stderr)
-            failures.append(inst.label)
+            # 指数 (^N225 等) は J-Quants 非対応で空になるのが正常。失敗に数えない。
+            if inst.ticker.strip().startswith("^"):
+                print(f"[skip] {inst.label} ({inst.ticker}): 指数は J-Quants 非対応。スキップ。",
+                      file=sys.stderr)
+            else:
+                print(f"[warn] {inst.label}: データ取得に失敗しました。スキップします。", file=sys.stderr)
+                failures.append(inst.label)
             continue
         print(
             f"[fetch] {inst.label}: {len(series)} 本 "
