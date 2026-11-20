@@ -34,4 +34,6 @@ jobs:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           # 任意で上書き。未設定ならコード内の既定 ID を使用。
           SPREADSHEET_ID: ${{ vars.SPREADSHEET_ID }}
+          # J-Quants V2 の API キー (x-api-key)。
+          JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
         run: python -m sheets_stock.update_job

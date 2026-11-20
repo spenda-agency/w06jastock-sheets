@@ -31,7 +31,7 @@ FIRST_DATA_ROW = 2
 class Instrument:
     """1 ワークシートに対応する銘柄定義。"""
 
-    #: yfinance 用ティッカー (指数は ^N225、東証個別株は "7203.T" 形式)
+    #: ティッカー (東証個別株/ETFは "7203.T" 形式。prices.py で J-Quants コードへ変換)
     ticker: str
     #: 書き込み先ワークシート (タブ) 名
     sheet_name: str

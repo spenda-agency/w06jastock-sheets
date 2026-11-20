@@ -1,6 +1,6 @@
 # w06jastock-sheets
 
-日経平均225・トヨタなどの日次株価を **Google スプレッドシートへ毎日 17:00 (JST) に自動出力** するジョブ。
+日経平均225・トヨタなどの日次株価を **Google スプレッドシートへ毎日 17:00 (JST) に自動出力** するジョブ。株価データは **J-Quants API**（公式・調整後終値）から取得します。
 
 姉妹リポジトリ [`spenda-agency/jastock`](https://github.com/spenda-agency/jastock)（東証全銘柄のゴールデンクロス検出 Web アプリ）のテクニカル指標を参考にしつつ、本リポジトリは方針が異なります:
 
@@ -12,8 +12,9 @@
 
 - スプレッドシート: <https://docs.google.com/spreadsheets/d/1Zivd5Dorzc_fnwYF0gt5QSliq1MwLs6ZntNmt3AyeD4/edit>
 - 1 銘柄 = 1 ワークシート（タブ）。タブ名は既存タブ「ABBV」に倣い銘柄コード。
-  - `N225` … 日経平均225（yfinance ティッカー `^N225`。指数のため 4 桁コードは無く `N225`）
-  - `7203` … トヨタ自動車（yfinance ティッカー `7203.T`）
+  - `7203` … トヨタ自動車（ティッカー `7203.T` → J-Quants コード `7203`）
+  - `N225` … 日経平均225。J-Quants に指数そのものは無いため**連動 ETF `1321.T`** を代理に使用
+    （値は指数ではなく ETF 価格・概ね連動）
 
 ## 銘柄の追加方法（GitHub 上で完結）
 
@@ -27,7 +28,8 @@ ticker,sheet_name,label
 6758.T,,ソニーグループ     ← ticker だけでも可。sheet_name は 6758 に自動導出
 ```
 
-- `ticker`（必須）… yfinance のティッカー（東証個別株は `7203.T`、指数は `^N225`）
+- `ticker`（必須）… 東証個別株/ETF は `7203.T`（末尾 `.T` は自動除去し J-Quants コードへ変換）。
+  指数 `^N225` は J-Quants 非対応でスキップされます
 - `sheet_name`（任意）… タブ名。空欄なら ticker から自動導出（先頭 `^`・末尾 `.T` を除去）
 - `label`（任意）… ログ表示名。空欄なら ticker をそのまま使用
 - `#` で始まる行・空行は無視されます
@@ -68,7 +70,7 @@ ABBV の設計に合わせ、データは **新しい日付が上（降順）** 
 
 - 数式は **ABBV と完全一致**（`AVERAGE`/`SUM`/`STDEV`/`COUNTIF` ベースのシート数式）。
   `jastock` バックエンドは Wilder 平滑（`ewm`）ですが、本シートは ABBV 方式に合わせています。
-- データは **降順**（最新が 2 行目）。Python は yfinance から取得した Date/Close を降順に
+- データは **降順**（最新が 2 行目）。Python は J-Quants から取得した Date/Close を降順に
   並べ替えて A/B 列へ書き込み、C 列以降は上記の数式が計算します。
 - 移動平均・RSI 等は下方向の window を参照するため、**最古の数行では window が
   データ下端を超えて空セル（=0）を含みます**。これは ABBV の挙動そのものです。
@@ -88,6 +90,7 @@ ABBV の設計に合わせ、データは **新しい日付が上（降順）** 
 リポジトリの **Settings → Secrets and variables → Actions** で登録:
 
 - Secret `GOOGLE_SERVICE_ACCOUNT_JSON` … ダウンロードした鍵 JSON の**中身全体**
+- Secret `JQUANTS_API_KEY` … J-Quants **V2 の API キー**（ダッシュボードで発行・無期限）
 - （任意）Variable `SPREADSHEET_ID` … 出力先を変えたい場合のみ
 
 登録後、**Actions タブ → `Update stock sheets` → `Run workflow`** で一度手動実行して
@@ -105,8 +108,9 @@ ABBV の設計に合わせ、データは **新しい日付が上（降順）** 
 ```bash
 pip install -r requirements.txt
 
-# 認証: 鍵ファイルのパスを指定
+# 認証: Google 鍵ファイルのパス + J-Quants トークン
 export GOOGLE_APPLICATION_CREDENTIALS=./service_account.json
+export JQUANTS_API_KEY=xxxxx          # J-Quants V2 の API キー
 
 # 実行（対象シートへ一括書き込み）
 python -m sheets_stock.update_job
@@ -115,7 +119,7 @@ python -m sheets_stock.update_job
 補助コマンド:
 
 ```bash
-# 取得のみ・書き込みなし（認証不要）。行数・期間・最新終値を確認
+# 取得のみ・書き込みなし（J-Quants 認証は必要）。行数・期間・最新終値を確認
 python -m sheets_stock.update_job --dry-run
 
 # 合成データで数式生成の健全性を検証（ネットワーク/認証不要）
@@ -129,7 +133,7 @@ w06jastock-sheets/
 ├── tickers.csv          # 対象銘柄一覧（GitHub 上で編集して銘柄追加）
 ├── sheets_stock/
 │   ├── config.py        # tickers.csv 読み込み・スプレッドシート ID・定数
-│   ├── prices.py        # yfinance で (Date, Close) を取得
+│   ├── prices.py        # J-Quants で (Date, Close) を取得
 │   ├── formulas.py      # C 列以降の数式を生成（本リポジトリの核）
 │   ├── sheet_writer.py  # gspread 認証 + 一括書き込み
 │   └── update_job.py    # エントリポイント（--dry-run / --self-test）
@@ -140,7 +144,16 @@ w06jastock-sheets/
 
 ## データソースについて
 
-`jastock` と同じく **yfinance**（Yahoo Finance、認証不要）を採用しています。日経平均225 は指数ティッカー `^N225`、個別株は `<コード>.T` 形式です。より公式・無遅延なデータが必要な場合は `jastock` の `prices.py` と同様に J-Quants へ差し替え可能です。
+**J-Quants API**（JPX 公式）から日次株価を取得します。終値は**調整後終値**（株式分割等を反映）を使用します。
+
+- 認証: V2 の **API キー**（`x-api-key` ヘッダー・無期限）。`prices.py` が
+  環境変数 `JQUANTS_API_KEY` を使います。
+- ティッカー `7203.T` は末尾 `.T` を除去し、V2 の **5桁コード `72030`** に変換して取得します。
+- **指数（`^N225` 等）は J-Quants に存在しないため、連動 ETF を代理に使います。** 日経225 は
+  `1321.T`（NEXT FUNDS 日経225連動型）、TOPIX 等も連動 ETF（`1306.T` 等）で登録済みです
+  （値は指数そのものではなく ETF 価格・概ね連動）。なお `^` 始まりの指数行を残した場合は
+  失敗ではなく「スキップ」として扱います（ビルドは緑のまま）。
+- 旧データソースの Yahoo Finance（yfinance）からの移行済みです。
 
 ## ライセンス
 
